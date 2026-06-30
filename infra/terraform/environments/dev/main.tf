@@ -39,3 +39,25 @@ module "virtual_network" {
   tags = local.common_tags
 
 }
+
+module "aks" {
+  source = "../../modules/aks"
+
+  location            = var.environment_config.location
+  resource_group_name = module.resource_group.name
+
+  cluster = {
+    name                = module.naming.aks_name
+    dns_prefix          = module.naming.aks_name
+    kubernetes_version  = var.kubernetes_cluster.kubernetes_version
+    node_resource_group = module.naming.aks_node_rg_name
+  }
+
+  default_node_pool = {
+    node_count = var.kubernetes_cluster.node_count
+    vm_size    = var.kubernetes_cluster.vm_size
+    subnet_id  = module.virtual_network.subnet_id
+  }
+
+  tags = local.common_tags
+}

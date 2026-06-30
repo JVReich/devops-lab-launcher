@@ -30,3 +30,16 @@ variable "virtual_network" {
   }
 }
 
+variable "kubernetes_cluster" {
+  type = object({
+    kubernetes_version = string
+    node_count         = number
+    vm_size            = string
+  })
+
+  default = {
+    kubernetes_version = null
+    node_count         = 1
+    vm_size            = "Standard_B2s"
+  }
+}
