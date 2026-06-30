@@ -17,3 +17,7 @@ output "aks_name" {
 output "aks_node_rg_name" {
   value = local.aks_node_rg_name
 }
+
+output "subnet_name" {
+  value = local.subnet_name
+}

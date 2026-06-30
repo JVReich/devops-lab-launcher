@@ -5,4 +5,5 @@ locals {
   vnet_name           = "vnet-${local.name_prefix}"
   aks_name            = "aks-${local.name_prefix}"
   aks_node_rg_name    = "rg-${local.name_prefix}-aks-nodes"
+  subnet_name         = "snet-aks-${local.name_prefix}"
 }
