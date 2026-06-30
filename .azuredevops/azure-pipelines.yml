@@ -1,0 +1,52 @@
+trigger: none
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+parameters:
+  - name: action
+    displayName: Action
+    type: string
+    default: validate
+    values:
+      - validate
+      - plan
+      - apply
+      - destroy
+
+  - name: environment
+    displayName: Environment
+    type: string
+    default: dev
+    values:
+      - dev
+
+variables:
+  terraformVersion: "1.8.0"
+  terraformWorkingDirectory: "infra/terraform/environments/${{ parameters.environment }}"
+
+stages:
+  - stage: Terraform_Validate
+    displayName: Terraform Validate
+    jobs:
+      - job: Validate
+        displayName: Terraform fmt and validate
+        steps:
+          - checkout: self
+
+          - task: TerraformInstaller@1
+            displayName: Install Terraform
+            inputs:
+              terraformVersion: "$(terraformVersion)"
+
+          - script: |
+              terraform fmt -check -recursive
+            displayName: Terraform fmt check
+            workingDirectory: "$(terraformWorkingDirectory)"
+
+          - script: |
+              terraform init -backend=false
+              terraform validate
+            displayName: Terraform validate
+            workingDirectory: "$(terraformWorkingDirectory)"
