@@ -24,7 +24,6 @@ parameters:
 
 variables:
   terraformVersion: "1.8.0"
-  terraformWorkingDirectory: "infra/terraform/environments/${{ parameters.environment }}"
 
 stages:
   - stage: Terraform_Validate
@@ -33,20 +32,13 @@ stages:
       - job: Validate
         displayName: Terraform fmt and validate
         steps:
-          - checkout: self
+        - checkout: self
 
-          - task: TerraformInstaller@1
-            displayName: Install Terraform
-            inputs:
-              terraformVersion: "$(terraformVersion)"
+        - task: TerraformInstaller@1
+          displayName: Install Terraform
+          inputs:
+            terraformVersion: "$(terraformVersion)"
 
-          - script: |
-              terraform fmt -check -recursive
-            displayName: Terraform fmt check
-            workingDirectory: "$(terraformWorkingDirectory)"
-
-          - script: |
-              terraform init -backend=false
-              terraform validate
-            displayName: Terraform validate
-            workingDirectory: "$(terraformWorkingDirectory)"
+        - pwsh: |
+            ./scripts/terraform-validate.ps1 -Environment "${{ parameters.environment }}"
+          displayName: Terraform validate
