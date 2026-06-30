@@ -31,13 +31,17 @@ module "virtual_network" {
   resource_group_name = module.resource_group.name
   location            = var.environment_config.location
 
-  vnet_name       = module.naming.vnet_name
-  address_space   = var.virtual_network.address_space
-  subnet_name     = module.naming.subnet_name
-  subnet_prefixes = var.virtual_network.aks_subnet_prefixes
+  virtual_network = {
+    name          = module.naming.vnet_name
+    address_space = var.virtual_network.address_space
+  }
+
+  aks_subnet = {
+    name             = module.naming.subnet_name
+    address_prefixes = var.virtual_network.aks_subnet_prefixes
+  }
 
   tags = local.common_tags
-
 }
 
 module "aks" {

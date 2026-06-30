@@ -8,24 +8,20 @@ variable "location" {
   type        = string
 }
 
-variable "vnet_name" {
-  description = "Virtual Network name."
-  type        = string
+variable "virtual_network" {
+  description = "Virtual network configuration."
+  type = object({
+    name          = string
+    address_space = list(string)
+  })
 }
 
-variable "address_space" {
-  description = "Virtual Network address space."
-  type        = list(string)
-}
-
-variable "subnet_name" {
-  description = "AKS subnet name."
-  type        = string
-}
-
-variable "subnet_prefixes" {
-  description = "AKS subnet address prefixes."
-  type        = list(string)
+variable "aks_subnet" {
+  description = "AKS subnet configuration."
+  type = object({
+    name             = string
+    address_prefixes = list(string)
+  })
 }
 
 variable "tags" {
