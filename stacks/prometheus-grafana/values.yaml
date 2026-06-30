@@ -1,0 +1,60 @@
+fullnameOverride: prometheus-grafana
+
+alertmanager:
+  enabled: false
+
+grafana:
+  enabled: true
+
+  adminUser: admin
+  adminPassword: admin
+
+  service:
+    type: ClusterIP
+
+  persistence:
+    enabled: false
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+prometheus:
+  enabled: true
+
+  prometheusSpec:
+    replicas: 1
+    retention: 2h
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 300m
+        memory: 1Gi
+
+    storageSpec: {}
+
+kubeStateMetrics:
+  enabled: true
+
+nodeExporter:
+  enabled: true
+
+prometheusOperator:
+  enabled: true
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
