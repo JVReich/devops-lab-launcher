@@ -1,3 +1,7 @@
 output "resource_group_name" {
-  value = azurerm_resource_group.main.name
+  value = module.resource_group.name
+}
+
+output "resource_group_id" {
+  value = module.resource_group.id
 }
