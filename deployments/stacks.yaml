@@ -1,0 +1,29 @@
+platform:
+  ingress-nginx:
+    enabled: true
+    namespace: ingress-nginx
+    repoName: ingress-nginx
+    repoUrl: https://kubernetes.github.io/ingress-nginx
+    chart: ingress-nginx/ingress-nginx
+    releaseName: ingress-nginx
+    valuesFile: platform/ingress-nginx/values.yaml
+
+  cert-manager:
+    enabled: true
+    namespace: cert-manager
+    repoName: jetstack
+    repoUrl: https://charts.jetstack.io
+    chart: jetstack/cert-manager
+    releaseName: cert-manager
+    valuesFile: platform/cert-manager/values.yaml
+
+stacks:
+  nginx:
+    enabled: true
+    namespace: nginx
+    repoName: bitnami
+    repoUrl: https://charts.bitnami.com/bitnami
+    chart: bitnami/nginx
+    releaseName: nginx
+    valuesFile: stacks/nginx/values.yaml
+    hostname: nginx.example.com
