@@ -1,0 +1,102 @@
+trigger: none
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+parameters:
+  - name: environment
+    displayName: Environment
+    type: string
+    default: dev
+    values:
+      - dev
+
+  - name: name
+    displayName: Stack name
+    type: string
+    default: redis
+    values:
+      - nginx
+      - redis
+      - prometheus-grafana
+      - argocd
+      - elk
+
+  - name: action
+    displayName: Action
+    type: string
+    default: deploy
+    values:
+      - deploy
+      - status
+      - uninstall
+
+  - name: execute
+    displayName: Execute changes
+    type: boolean
+    default: false
+
+variables:
+  azureServiceConnection: "CHANGE-ME-AZURE-SERVICE-CONNECTION"
+
+  # For dev. Later we can derive these dynamically or read Terraform outputs.
+  resourceGroupName: "rg-devops-lab-dev-ilc"
+  aksClusterName: "aks-devops-lab-dev-ilc"
+
+stages:
+  - stage: Deploy_Stack
+    displayName: Deploy Stack
+    jobs:
+      - job: Deploy
+        displayName: Deploy selected stack
+        steps:
+          - checkout: self
+
+          - task: HelmInstaller@1
+            displayName: Install Helm
+            inputs:
+              helmVersionToInstall: latest
+
+          - pwsh: |
+              $ErrorActionPreference = "Stop"
+
+              Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+              Install-Module powershell-yaml -Scope CurrentUser -Force
+              Import-Module powershell-yaml
+
+              Get-Command ConvertFrom-Yaml
+            displayName: Install PowerShell YAML module
+
+          - task: AzureCLI@2
+            displayName: Connect to AKS
+            condition: and(succeeded(), eq('${{ parameters.execute }}', 'true'))
+            inputs:
+              azureSubscription: "$(azureServiceConnection)"
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                $ErrorActionPreference = "Stop"
+
+                az aks get-credentials `
+                  --resource-group "$(resourceGroupName)" `
+                  --name "$(aksClusterName)" `
+                  --overwrite-existing
+
+                kubectl get nodes
+
+          - pwsh: |
+              $ErrorActionPreference = "Stop"
+
+              $executeFlag = ""
+
+              if ("${{ parameters.execute }}" -eq "True") {
+                $executeFlag = "-Execute"
+              }
+
+              ./scripts/deploy-stack.ps1 `
+                -Type stack `
+                -Name "${{ parameters.name }}" `
+                -Action "${{ parameters.action }}" `
+                $executeFlag
+            displayName: Run deploy-stack script

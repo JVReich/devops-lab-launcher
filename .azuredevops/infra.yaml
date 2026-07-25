@@ -1,0 +1,197 @@
+trigger: none
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+parameters:
+  - name: environment
+    displayName: Environment
+    type: string
+    default: dev
+    values:
+      - dev
+
+  - name: action
+    displayName: Terraform action
+    type: string
+    default: plan
+    values:
+      - validate
+      - plan
+      - apply
+      - destroy
+
+  - name: installPlatformBaseline
+    displayName: Install platform baseline
+    type: boolean
+    default: true
+
+variables:
+  terraformVersion: "1.8.0"
+
+  # Replace this later with the real Azure DevOps service connection name.
+  azureServiceConnection: "CHANGE-ME-AZURE-SERVICE-CONNECTION"
+
+  terraformDirectory: "infra/terraform/environments/${{ parameters.environment }}"
+
+  # Environment configuration used to generate terraform.auto.tfvars.json on the runner.
+  projectName: "devops-lab"
+  owner: "JVReich"
+  repository: "github.com/JVReich/devops-lab-launcher"
+
+  azureLocation: "israelcentral"
+  azureLocationShort: "ilc"
+
+  vnetAddressSpace: "10.10.0.0/16"
+  aksSubnetPrefix: "10.10.1.0/24"
+
+  aksVmSize: "Standard_B2s_v2"
+  aksNodeCount: "1"
+
+  # Must match the naming module output for the selected environment/location.
+  resourceGroupName: "rg-devops-lab-dev-ilc"
+  aksClusterName: "aks-devops-lab-dev-ilc"
+
+stages:
+  - stage: Terraform
+    displayName: Terraform
+    jobs:
+      - job: Terraform
+        displayName: Terraform ${{ parameters.action }}
+        steps:
+          - checkout: self
+
+          - task: TerraformInstaller@1
+            displayName: Install Terraform
+            inputs:
+              terraformVersion: "$(terraformVersion)"
+
+          - task: AzureCLI@2
+            displayName: Run Terraform
+            inputs:
+              azureSubscription: "$(azureServiceConnection)"
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                $ErrorActionPreference = "Stop"
+
+                cd "$(terraformDirectory)"
+
+                Write-Host "Generating temporary Terraform variable file..."
+
+                @"
+                {
+                  "environment_config": {
+                    "project_name": "$(projectName)",
+                    "environment": "${{ parameters.environment }}",
+                    "location": "$(azureLocation)",
+                    "location_short": "$(azureLocationShort)",
+                    "owner": "$(owner)",
+                    "repository": "$(repository)"
+                  },
+                  "virtual_network": {
+                    "address_space": ["$(vnetAddressSpace)"],
+                    "aks_subnet_prefixes": ["$(aksSubnetPrefix)"]
+                  },
+                  "kubernetes_cluster": {
+                    "kubernetes_version": null,
+                    "node_count": $(aksNodeCount),
+                    "vm_size": "$(aksVmSize)"
+                  }
+                }
+                "@ | Out-File -FilePath "terraform.auto.tfvars.json" -Encoding utf8
+
+                Write-Host "Running terraform fmt..."
+                terraform fmt -recursive
+
+                Write-Host "Running terraform init..."
+                terraform init
+
+                Write-Host "Running terraform validate..."
+                terraform validate
+
+                if ("${{ parameters.action }}" -eq "validate") {
+                  Write-Host "Validation completed."
+                  exit 0
+                }
+
+                if ("${{ parameters.action }}" -eq "plan") {
+                  Write-Host "Running terraform plan..."
+                  terraform plan
+                  exit 0
+                }
+
+                if ("${{ parameters.action }}" -eq "apply") {
+                  Write-Host "Running terraform plan with output..."
+                  terraform plan -out=tfplan
+
+                  Write-Host "Applying Terraform plan..."
+                  terraform apply -auto-approve tfplan
+                  exit 0
+                }
+
+                if ("${{ parameters.action }}" -eq "destroy") {
+                  Write-Host "Destroying Terraform-managed infrastructure..."
+                  terraform destroy -auto-approve
+                  exit 0
+                }
+
+                throw "Unsupported Terraform action: ${{ parameters.action }}"
+
+  - stage: Platform_Baseline
+    displayName: Install Platform Baseline
+    dependsOn: Terraform
+    condition: and(succeeded(), eq('${{ parameters.action }}', 'apply'), eq('${{ parameters.installPlatformBaseline }}', 'true'))
+    jobs:
+      - job: Install_Platform_Baseline
+        displayName: Install ingress-nginx and cert-manager
+        steps:
+          - checkout: self
+
+          - task: HelmInstaller@1
+            displayName: Install Helm
+            inputs:
+              helmVersionToInstall: latest
+
+          - pwsh: |
+              $ErrorActionPreference = "Stop"
+
+              Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+              Install-Module powershell-yaml -Scope CurrentUser -Force
+              Import-Module powershell-yaml
+
+              Get-Command ConvertFrom-Yaml
+            displayName: Install PowerShell YAML module
+
+          - task: AzureCLI@2
+            displayName: Connect to AKS
+            inputs:
+              azureSubscription: "$(azureServiceConnection)"
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                $ErrorActionPreference = "Stop"
+
+                az aks get-credentials `
+                  --resource-group "$(resourceGroupName)" `
+                  --name "$(aksClusterName)" `
+                  --overwrite-existing
+
+                kubectl get nodes
+
+          - pwsh: |
+              $ErrorActionPreference = "Stop"
+
+              ./scripts/deploy-stack.ps1 `
+                -Type platform `
+                -Name ingress-nginx `
+                -Action deploy `
+                -Execute
+
+              ./scripts/deploy-stack.ps1 `
+                -Type platform `
+                -Name cert-manager `
+                -Action deploy `
+                -Execute
+            displayName: Deploy platform baseline
