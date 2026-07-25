@@ -61,6 +61,10 @@ stages:
           - pwsh: |
               $ErrorActionPreference = "Stop"
 
+              if ($PSVersionTable.PSVersion.Major -ge 7) {
+                  $PSNativeCommandUseErrorActionPreference = $true
+              }
+
               Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
               Install-Module powershell-yaml -Scope CurrentUser -Force
               Import-Module powershell-yaml
@@ -78,6 +82,10 @@ stages:
               inlineScript: |
                 $ErrorActionPreference = "Stop"
 
+                if ($PSVersionTable.PSVersion.Major -ge 7) {
+                    $PSNativeCommandUseErrorActionPreference = $true
+                }
+
                 az aks get-credentials `
                   --resource-group "$(resourceGroupName)" `
                   --name "$(aksClusterName)" `
@@ -87,6 +95,10 @@ stages:
 
           - pwsh: |
               $ErrorActionPreference = "Stop"
+
+              if ($PSVersionTable.PSVersion.Major -ge 7) {
+                  $PSNativeCommandUseErrorActionPreference = $true
+              }
 
               $executeFlag = ""
 
