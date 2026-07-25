@@ -27,3 +27,41 @@ stacks:
     releaseName: nginx
     valuesFile: stacks/nginx/values.yaml
     hostname: nginx.example.com
+
+  redis:
+    enabled: true
+    namespace: redis
+    repoName: bitnami
+    repoUrl: https://charts.bitnami.com/bitnami
+    chart: bitnami/redis
+    releaseName: redis
+    valuesFile: stacks/redis/values.yaml
+
+  prometheus-grafana:
+    enabled: true
+    namespace: monitoring
+    repoName: prometheus-community
+    repoUrl: https://prometheus-community.github.io/helm-charts
+    chart: prometheus-community/kube-prometheus-stack
+    releaseName: prometheus-grafana
+    valuesFile: stacks/prometheus-grafana/values.yaml
+    hostname: grafana.example.com
+
+  argocd:
+    enabled: true
+    namespace: argocd
+    repoName: argo
+    repoUrl: https://argoproj.github.io/argo-helm
+    chart: argo/argo-cd
+    releaseName: argocd
+    valuesFile: stacks/argocd/values.yaml
+    hostname: argocd.example.com
+
+  elk:
+    enabled: true
+    namespace: elastic-system
+    repoName: elastic
+    repoUrl: https://helm.elastic.co
+    chart: elastic/eck-operator
+    releaseName: eck-operator
+    valuesFile: stacks/elk/values.yaml
