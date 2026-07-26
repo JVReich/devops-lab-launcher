@@ -38,7 +38,7 @@ parameters:
     default: false
 
 variables:
-  azureServiceConnection: "CHANGE-ME-AZURE-SERVICE-CONNECTION"
+  azureServiceConnection: "sc-devops-lab-azure"
 
   # For dev. Later we can derive these dynamically or read Terraform outputs.
   resourceGroupName: "rg-devops-lab-dev-ilc"

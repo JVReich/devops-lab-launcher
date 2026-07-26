@@ -31,7 +31,7 @@ variables:
   terraformVersion: "1.8.0"
 
   # Replace this later with the real Azure DevOps service connection name.
-  azureServiceConnection: "CHANGE-ME-AZURE-SERVICE-CONNECTION"
+  azureServiceConnection: "sc-devops-lab-azure"
 
   terraformDirectory: "infra/terraform/environments/${{ parameters.environment }}"
 
