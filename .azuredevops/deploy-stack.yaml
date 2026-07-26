@@ -1,114 +1,176 @@
-trigger: none
-pr: none
+param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet("platform", "stack")]
+    [string]$Type,
 
-pool:
-  vmImage: ubuntu-latest
+    [Parameter(Mandatory = $true)]
+    [string]$Name,
 
-parameters:
-  - name: environment
-    displayName: Environment
-    type: string
-    default: dev
-    values:
-      - dev
+    [ValidateSet("deploy", "uninstall", "status")]
+    [string]$Action = "deploy",
 
-  - name: name
-    displayName: Stack name
-    type: string
-    default: redis
-    values:
-      - nginx
-      - redis
-      - prometheus-grafana
-      - argocd
-      - elk
+    [string]$CatalogPath = "",
 
-  - name: action
-    displayName: Action
-    type: string
-    default: deploy
-    values:
-      - deploy
-      - status
-      - uninstall
+    [switch]$Execute,
 
-  - name: execute
-    displayName: Execute changes
-    type: boolean
-    default: false
+    [switch]$DeleteNamespace
+)
 
-variables:
-  azureServiceConnection: "sc-devops-lab-azure"
+$ErrorActionPreference = "Stop"
 
-  # For dev. Later we can derive these dynamically or read Terraform outputs.
-  resourceGroupName: "rg-devops-lab-dev-ilc"
-  aksClusterName: "aks-devops-lab-dev-ilc"
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+    $PSNativeCommandUseErrorActionPreference = $true
+}
 
-stages:
-  - stage: Deploy_Stack
-    displayName: Deploy Stack
-    jobs:
-      - job: Deploy
-        displayName: Deploy selected stack
-        steps:
-          - checkout: self
+$RepoRoot = Resolve-Path "$PSScriptRoot\.."
 
-          - task: HelmInstaller@1
-            displayName: Install Helm
-            inputs:
-              helmVersionToInstall: latest
+if ([string]::IsNullOrWhiteSpace($CatalogPath)) {
+    $CatalogPath = Join-Path $RepoRoot "deployments\stacks.yaml"
+}
 
-          - pwsh: |
-              $ErrorActionPreference = "Stop"
+function Test-CommandExists {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Command
+    )
 
-              if ($PSVersionTable.PSVersion.Major -ge 7) {
-                  $PSNativeCommandUseErrorActionPreference = $true
-              }
+    return [bool](Get-Command $Command -ErrorAction SilentlyContinue)
+}
 
-              Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-              Install-Module powershell-yaml -Scope CurrentUser -Force
-              Import-Module powershell-yaml
+Write-Host "AKS DevOps Lab Launcher - Stack Deployment"
+Write-Host "Type:    $Type"
+Write-Host "Name:    $Name"
+Write-Host "Action:  $Action"
+Write-Host "Catalog: $CatalogPath"
+Write-Host ""
 
-              Get-Command ConvertFrom-Yaml
-            displayName: Install PowerShell YAML module
+if (-not (Test-Path $CatalogPath)) {
+    throw "Deployment catalog not found: $CatalogPath"
+}
 
-          - task: AzureCLI@2
-            displayName: Connect to AKS
-            condition: and(succeeded(), eq('${{ parameters.execute }}', 'true'))
-            inputs:
-              azureSubscription: "$(azureServiceConnection)"
-              scriptType: pscore
-              scriptLocation: inlineScript
-              inlineScript: |
-                $ErrorActionPreference = "Stop"
+if (-not (Get-Command ConvertFrom-Yaml -ErrorAction SilentlyContinue)) {
+    throw "ConvertFrom-Yaml was not found. Install it with: Install-Module powershell-yaml -Scope CurrentUser"
+}
 
-                if ($PSVersionTable.PSVersion.Major -ge 7) {
-                    $PSNativeCommandUseErrorActionPreference = $true
-                }
+$catalog = Get-Content $CatalogPath -Raw | ConvertFrom-Yaml
 
-                az aks get-credentials `
-                  --resource-group "$(resourceGroupName)" `
-                  --name "$(aksClusterName)" `
-                  --overwrite-existing
+if ($Type -eq "platform") {
+    $section = $catalog.platform
+}
+else {
+    $section = $catalog.stacks
+}
 
-                kubectl get nodes
+if (-not $section.$Name) {
+    $availableItems = $section.PSObject.Properties.Name -join ", "
+    throw "$Type item '$Name' was not found in $CatalogPath. Available $Type items: $availableItems"
+}
 
-          - pwsh: |
-              $ErrorActionPreference = "Stop"
+$config = $section.$Name
 
-              if ($PSVersionTable.PSVersion.Major -ge 7) {
-                  $PSNativeCommandUseErrorActionPreference = $true
-              }
+if ($config.enabled -eq $false) {
+    throw "$Type item '$Name' is disabled in the deployment catalog."
+}
 
-              $executeFlag = ""
+$ValuesFilePath = Join-Path $RepoRoot $config.valuesFile
 
-              if ("${{ parameters.execute }}" -eq "True") {
-                $executeFlag = "-Execute"
-              }
+if ($Action -eq "deploy" -and -not (Test-Path $ValuesFilePath)) {
+    throw "Values file not found: $ValuesFilePath"
+}
 
-              ./scripts/deploy-stack.ps1 `
-                -Type stack `
-                -Name "${{ parameters.name }}" `
-                -Action "${{ parameters.action }}" `
-                $executeFlag
-            displayName: Run deploy-stack script
+Write-Host "Resolved deployment:"
+Write-Host "  Namespace:    $($config.namespace)"
+Write-Host "  Repo name:    $($config.repoName)"
+Write-Host "  Repo URL:     $($config.repoUrl)"
+Write-Host "  Chart:        $($config.chart)"
+Write-Host "  Release name: $($config.releaseName)"
+
+if ($Action -eq "deploy") {
+    Write-Host "  Values file:  $ValuesFilePath"
+}
+
+if ($config.hostname) {
+    Write-Host "  Hostname:     $($config.hostname)"
+}
+
+if ($Action -eq "uninstall" -and $DeleteNamespace) {
+    Write-Host "  Delete namespace: true"
+}
+
+Write-Host ""
+
+if (-not $Execute) {
+    Write-Host "Dry run only. Planned action:"
+
+    if ($Action -eq "deploy") {
+        Write-Host "  helm repo add $($config.repoName) $($config.repoUrl)"
+        Write-Host "  helm repo update"
+        Write-Host "  helm upgrade --install $($config.releaseName) $($config.chart) --namespace $($config.namespace) --create-namespace --values `"$ValuesFilePath`""
+    }
+
+    if ($Action -eq "uninstall") {
+        Write-Host "  helm uninstall $($config.releaseName) --namespace $($config.namespace)"
+
+        if ($DeleteNamespace) {
+            Write-Host "  kubectl delete namespace $($config.namespace) --ignore-not-found=true"
+        }
+    }
+
+    if ($Action -eq "status") {
+        Write-Host "  helm status $($config.releaseName) --namespace $($config.namespace)"
+    }
+
+    Write-Host ""
+    Write-Host "To execute later, run:"
+
+    $executeExample = ".\scripts\deploy-stack.ps1 -Type $Type -Name $Name -Action $Action"
+
+    if ($DeleteNamespace) {
+        $executeExample = "$executeExample -DeleteNamespace"
+    }
+
+    $executeExample = "$executeExample -Execute"
+
+    Write-Host "  $executeExample"
+    exit 0
+}
+
+if (-not (Test-CommandExists "helm")) {
+    throw "Helm is not installed or not in PATH."
+}
+
+if ($Action -eq "deploy") {
+    Write-Host "Adding Helm repo..."
+    helm repo add $config.repoName $config.repoUrl
+
+    Write-Host "Updating Helm repos..."
+    helm repo update
+
+    Write-Host "Deploying release..."
+    helm upgrade --install $config.releaseName $config.chart `
+        --namespace $config.namespace `
+        --create-namespace `
+        --values $ValuesFilePath
+}
+
+if ($Action -eq "uninstall") {
+    Write-Host "Uninstalling release..."
+    helm uninstall $config.releaseName --namespace $config.namespace
+
+    if ($DeleteNamespace) {
+        if (-not (Test-CommandExists "kubectl")) {
+            throw "kubectl is not installed or not in PATH."
+        }
+
+        Write-Host "Deleting namespace..."
+        kubectl delete namespace $config.namespace --ignore-not-found=true
+    }
+}
+
+if ($Action -eq "status") {
+    Write-Host "Checking release status..."
+    helm status $config.releaseName --namespace $config.namespace
+}
+
+Write-Host ""
+Write-Host "Action completed successfully."
